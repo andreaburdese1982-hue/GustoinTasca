@@ -2,24 +2,27 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-// Inizializzazione pulita
+// FORZIAMO L'USO DI V1 PER EVITARE L'ERRORE 404 V1BETA
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 export const askAiConcierge = async (query, cards) => {
   if (!API_KEY) return "Configurazione incompleta.";
 
   try {
-    // Puntiamo al modello base senza versioni beta nel nome
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Forza la versione v1 esplicitamente
+    const model = genAI.getGenerativeModel(
+      { model: "gemini-1.5-flash" },
+      { apiVersion: "v1" } // <-- QUESTA È LA CHIAVE PER RISOLVERE IL 404
+    );
 
     const context = JSON.stringify(cards.map(c => ({ name: c.name, notes: c.notes })));
-    const prompt = `Sei l'assistente di Gusto in Tasca. Basandoti su questi dati: ${context}, rispondi a: ${query}`;
+    const prompt = `Sei l'assistente di Gusto in Tasca. Rispondi a: ${query} basandoti su: ${context}`;
 
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (error) {
-    console.error("Dettaglio Errore:", error);
-    return "L'IA è in manutenzione, riprova tra un istante.";
+    console.error("Errore critico:", error);
+    return "L'IA è quasi pronta. Riprova tra 10 secondi.";
   }
 };
 
@@ -33,12 +36,17 @@ export const fileToGenerativePart = async (file) => {
 };
 
 export const analyzeBusinessCard = async (base64Image) => {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const prompt = "Estrai dati dal biglietto da visita in formato JSON: name, address, phone.";
   try {
-    const result = await model.generateContent([prompt, { inlineData: { mimeType: "image/jpeg", data: base64Image } }]);
-    const text = result.response.text().replace(/```json|```/g, "").trim();
-    return JSON.parse(text);
+    const model = genAI.getGenerativeModel(
+      { model: "gemini-1.5-flash" },
+      { apiVersion: "v1" }
+    );
+    const prompt = "Estrai JSON: name, address, phone.";
+    const result = await model.generateContent([
+      prompt, 
+      { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+    ]);
+    return JSON.parse(result.response.text().replace(/```json|```/g, ""));
   } catch (e) {
     throw e;
   }
