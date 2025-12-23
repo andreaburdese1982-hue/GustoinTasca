@@ -5,42 +5,14 @@ const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 /**
- * Funzione per la Chat (Gusto Assistant)
- */
-export const askAiConcierge = async (query: string, cards: any[]) => {
-  if (!API_KEY) return "Configurazione mancante.";
-  
-  try {
-    // Usiamo il modello più recente disponibile nella tua lista
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-    
-    const context = JSON.stringify(cards.map(c => ({ 
-      name: c.name, 
-      notes: c.notes || "" 
-    })));
-    
-    const prompt = `Sei l'assistente di Gusto in Tasca. Basandoti su questi locali: ${context}, rispondi in modo amichevole e sintetico a: ${query}`;
-
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (error: any) {
-    console.error("Errore Gemini 3:", error);
-    // Se l'errore è il 429 (quota superata), avvisiamo l'utente
-    if (error.status === 429) {
-      return "L'IA ha troppe richieste al momento. Riprova tra un minuto.";
-    }
-    return "L'assistente è momentaneamente offline.";
-  }
-};
-
-/**
- * Funzione per l'analisi dei biglietti da visita (OCR)
+ * 1. ANALISI BIGLIETTI DA VISITA (OCR)
+ * Corretta per evitare l'errore "Starting an object on a scalar field"
  */
 export const analyzeBusinessCard = async (base64Data: string, mimeType: string = "image/jpeg") => {
   if (!API_KEY) throw new Error("API_KEY mancante.");
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3-flash-preview", // Modello verificato come attivo nel tuo account
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -48,7 +20,9 @@ export const analyzeBusinessCard = async (base64Data: string, mimeType: string =
         properties: {
           name: { type: SchemaType.STRING },
           address: { type: SchemaType.STRING },
-          phone: { type: SchemaType.STRING }
+          phone: { type: SchemaType.STRING },
+          website: { type: SchemaType.STRING },
+          email: { type: SchemaType.STRING }
         },
         required: ["name"]
       }
@@ -56,31 +30,68 @@ export const analyzeBusinessCard = async (base64Data: string, mimeType: string =
   });
 
   try {
+    // La struttura corretta richiede che inlineData e text siano oggetti separati nell'array
     const result = await model.generateContent([
-      "Analizza l'immagine ed estrai i dati in formato JSON.",
-      { inlineData: { mimeType, data: base64Data } }
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: base64Data
+        }
+      },
+      { text: "Analizza questo biglietto da visita ed estrai i dati in formato JSON: nome del locale, indirizzo, telefono, sito web e email." }
     ]);
-    return JSON.parse(result.response.text());
+
+    const responseText = result.response.text();
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Errore OCR:", error);
+    console.error("Errore durante l'analisi dell'immagine:", error);
     throw error;
   }
 };
 
 /**
- * Helper per convertire i file immagine in un formato leggibile dall'IA
- * Necessario per evitare errori di esportazione in AddCard.tsx
+ * 2. GUSTO ASSISTANT (CONCIERGE)
+ * La funzione che abbiamo visto funzionare correttamente nella chat
  */
-export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string, mimeType: string } }> => {
+export const askAiConcierge = async (query: string, cards: any[]) => {
+  if (!API_KEY) return "Servizio non configurato correttamente.";
+  
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    
+    const context = JSON.stringify(cards.map(c => ({ 
+      name: c.name, 
+      notes: c.notes || "",
+      type: c.type 
+    })));
+    
+    const prompt = `Sei l'assistente di Gusto in Tasca. Basandoti su questi locali salvati: ${context}, rispondi in modo amichevole, sintetico e in italiano a questa domanda: ${query}`;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  } catch (error: any) {
+    console.error("Errore Assistente:", error);
+    if (error.status === 429) {
+      return "Troppe richieste. Riprova tra un minuto.";
+    }
+    return "L'assistente è momentaneamente offline.";
+  }
+};
+
+/**
+ * 3. HELPER PER I FILE
+ * Necessario per la pagina AddCard.tsx per processare l'immagine prima dell'invio
+ */
+export const fileToGenerativePart = async (file: File): Promise<{ data: string, mimeType: string }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64Data = (reader.result as string).split(',')[1];
+      // Estraiamo solo la parte base64 rimuovendo il prefisso "data:image/..."
+      const base64String = reader.result as string;
+      const base64Data = base64String.split(',')[1];
       resolve({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type || "image/jpeg"
-        }
+        data: base64Data,
+        mimeType: file.type || "image/jpeg"
       });
     };
     reader.onerror = reject;
