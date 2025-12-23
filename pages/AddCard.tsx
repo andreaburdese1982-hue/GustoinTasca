@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Camera, Loader2, Save, X, Sparkles, MapPin, Euro, ConciergeBell, Info, CheckCircle2 } from 'lucide-react';
+import { Camera, Loader2, Save, X, Sparkles, MapPin, Euro, ConciergeBell, Info } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { analyzeBusinessCard, fileToGenerativePart } from '../services/geminiService';
 import { BusinessCard, PlaceType, HOTEL_AMENITIES } from '../types';
 
 const AddCard: React.FC = () => {
   const navigate = useNavigate();
-  const { id } = useParams<{ id: string }>(); // Check if we are in Edit mode
+  const { id } = useParams<{ id: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -18,7 +18,6 @@ const AddCard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
-  // Form State
   const [formData, setFormData] = useState<Partial<BusinessCard>>({
     name: '',
     type: PlaceType.RESTAURANT,
@@ -36,7 +35,6 @@ const AddCard: React.FC = () => {
     lng: undefined
   });
 
-  // Load existing data if editing
   useEffect(() => {
     if (id) {
         const loadCard = async () => {
@@ -56,30 +54,16 @@ const AddCard: React.FC = () => {
     }
   }, [id]);
 
-  // Robust Geocoding: Try Photon (Komoot) first, then fallback to Nominatim
   const fetchCoordinates = async (address: string): Promise<{lat: number, lng: number} | null> => {
-    // 1. Try Photon (Faster & reliable for autocomplete/search)
     try {
         const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`);
         const data = await res.json();
         if (data.features && data.features.length > 0) {
             const coords = data.features[0].geometry.coordinates;
-            // Photon returns [lng, lat]
             return { lat: coords[1], lng: coords[0] };
         }
     } catch (e) {
-        console.warn("Photon geocoding failed, trying fallback...", e);
-    }
-
-    // 2. Fallback to Nominatim
-    try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`);
-        const data = await response.json();
-        if (data && data.length > 0) {
-            return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-        }
-    } catch (e) {
-        console.error("All geocoding services failed", e);
+        console.warn("Photon geocoding failed", e);
     }
     return null;
   };
@@ -87,15 +71,13 @@ const AddCard: React.FC = () => {
   const handleManualGeocode = async (addressToSearch?: string) => {
       const addr = addressToSearch || formData.address;
       if (!addr) return null;
-      
       setIsGeocoding(true);
       const coords = await fetchCoordinates(addr);
-      
       if (coords) {
           setFormData(prev => ({ ...prev, lat: coords.lat, lng: coords.lng }));
-          setError(null); // Clear previous errors
+          setError(null);
       } else {
-          setError("Indirizzo non trovato sulla mappa. Assicurati di aver inserito la CITTÀ (es. Via Roma 1, Milano).");
+          setError("Indirizzo non trovato sulla mappa.");
       }
       setIsGeocoding(false);
       return coords;
@@ -108,19 +90,21 @@ const AddCard: React.FC = () => {
         setIsProcessing(true);
         setError(null);
         
-        // 1. Show Preview
+        // 1. Preview
         const reader = new FileReader();
         reader.onload = (ev) => setImagePreview(ev.target?.result as string);
         reader.readAsDataURL(file);
 
         // 2. Extract Data via Gemini
-        const base64Data = await fileToGenerativePart(file);
-        const extracted = await analyzeBusinessCard(base64Data);
+        // FIX: Spacchettiamo l'oggetto { data, mimeType }
+        const { data, mimeType } = await fileToGenerativePart(file);
+        
+        // Passiamo solo la stringa base64 e il tipo MIME
+        const extracted = await analyzeBusinessCard(data, mimeType);
 
         let finalLat = extracted.lat;
         let finalLng = extracted.lng;
 
-        // 3. Fallback: If AI missed coords but found address, try Geocoding immediately
         if ((!finalLat || !finalLng) && extracted.address) {
             const coords = await fetchCoordinates(extracted.address);
             if (coords) {
@@ -129,25 +113,24 @@ const AddCard: React.FC = () => {
             }
         }
 
-        // 4. Pre-fill form
         setFormData(prev => ({
           ...prev,
-          name: extracted.name,
+          name: extracted.name || '',
           type: extracted.type || PlaceType.RESTAURANT,
-          address: extracted.address,
-          phone: extracted.phone,
-          website: extracted.website,
-          email: extracted.email,
+          address: extracted.address || '',
+          phone: extracted.phone || '',
+          website: extracted.website || '',
+          email: extracted.email || '',
           tags: extracted.suggestedTags || [],
           services: extracted.suggestedServices || [],
-          imageFront: base64Data, // Keep for preview only
+          imageFront: data, 
           lat: finalLat,
           lng: finalLng
         }));
 
       } catch (err) {
         console.error(err);
-        setError("Impossibile analizzare il biglietto. Riprova o inserisci i dati manualmente.");
+        setError("Impossibile analizzare il biglietto. Inserisci i dati manualmente.");
       } finally {
         setIsProcessing(false);
       }
@@ -174,24 +157,12 @@ const AddCard: React.FC = () => {
     try {
         const user = await storageService.getCurrentUser();
         if (!user) {
-            setError("Sessione scaduta. Esegui nuovamente il login.");
+            setError("Sessione scaduta.");
             return;
         }
 
-        // AUTO-FIX: If we have address but no coords, try one last time to geocode before saving
-        let finalLat = formData.lat;
-        let finalLng = formData.lng;
-        
-        if (formData.address && (!finalLat || !finalLng)) {
-            const coords = await fetchCoordinates(formData.address);
-            if (coords) {
-                finalLat = coords.lat;
-                finalLng = coords.lng;
-            }
-        }
-
         const cardToSave: BusinessCard = {
-            id: id || `card_${Date.now()}`, // Keep existing ID if editing
+            id: id || `card_${Date.now()}`,
             userId: user.id,
             name: formData.name || '',
             type: formData.type as PlaceType,
@@ -205,18 +176,16 @@ const AddCard: React.FC = () => {
             notes: formData.notes || '',
             rating: formData.rating || 0,
             averageCost: formData.averageCost,
-            // HERE IS THE FIX: Force empty string to discard image to save space
             imageFront: '', 
             createdAt: formData.createdAt || Date.now(),
-            lat: finalLat,
-            lng: finalLng,
+            lat: formData.lat,
+            lng: formData.lng,
             likedBy: formData.likedBy || []
         };
 
         await storageService.saveCard(cardToSave);
-        navigate(id ? `/card/${id}` : '/'); // Redirect back to detail if editing
+        navigate(id ? `/card/${id}` : '/');
     } catch (err: any) {
-        console.error(err);
         setError(err.message || "Errore durante il salvataggio.");
     } finally {
         setIsSaving(false);
@@ -228,7 +197,7 @@ const AddCard: React.FC = () => {
           switch (type) {
               case PlaceType.RESTAURANT: return 'bg-orange-50 border-orange-500 text-orange-700 font-bold';
               case PlaceType.HOTEL: return 'bg-blue-50 border-blue-500 text-blue-700 font-bold';
-              case PlaceType.OTHER: return 'bg-purple-50 border-purple-500 text-purple-700 font-bold'; // Explicit Purple for Experiences
+              case PlaceType.OTHER: return 'bg-purple-50 border-purple-500 text-purple-700 font-bold';
               default: return 'bg-emerald-50 border-emerald-500 text-emerald-700';
           }
       }
@@ -255,20 +224,9 @@ const AddCard: React.FC = () => {
       {error && (
         <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
           {error}
-          
-          {error.includes("column") && error.includes("bip_convention") && (
-              <div className="mt-2 text-xs bg-white p-2 rounded border border-red-200">
-                  <strong>Database non aggiornato:</strong>
-                  <p className="mb-1">Esegui questo comando SQL su Supabase:</p>
-                  <code className="block bg-gray-100 p-1 rounded font-mono select-all">
-                      alter table public.business_cards add column if not exists bip_convention boolean;
-                  </code>
-              </div>
-          )}
         </div>
       )}
 
-      {/* Image Upload Area */}
       <div 
         onClick={() => !isProcessing && fileInputRef.current?.click()}
         className={`relative w-full h-48 rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors ${imagePreview ? 'border-emerald-500' : 'border-gray-300 hover:bg-gray-50'}`}
@@ -302,19 +260,14 @@ const AddCard: React.FC = () => {
 
       <div className="mt-2 flex items-start p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100">
         <Info size={16} className="mr-2 flex-shrink-0 mt-0.5" />
-        <p>L'IA leggerà i dati dal biglietto per te, ma <b>la foto non verrà salvata</b> per mantenere l'app veloce.</p>
+        <p>L'IA leggerà i dati dal biglietto per te, ma <b>la foto non verrà salvata</b> per privacy.</p>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        
-        {/* Helper Banner for Auto-Extracted Data */}
         {!id && formData.name && (
-            <div className="flex flex-col space-y-2">
-                <div className="p-2 bg-emerald-50 text-emerald-700 text-xs rounded-lg flex items-center">
-                    <Sparkles size={14} className="mr-2" />
-                    Dati estratti automaticamente.
-                </div>
+            <div className="p-2 bg-emerald-50 text-emerald-700 text-xs rounded-lg flex items-center">
+                <Sparkles size={14} className="mr-2" />
+                Dati estratti automaticamente.
             </div>
         )}
 
@@ -326,7 +279,6 @@ const AddCard: React.FC = () => {
             value={formData.name}
             onChange={e => setFormData({...formData, name: e.target.value})}
             className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-            placeholder="Es. Da Mario"
           />
         </div>
 
@@ -346,14 +298,10 @@ const AddCard: React.FC = () => {
           </div>
         </div>
 
-        {/* HOTEL AMENITIES SECTION - ONLY VISIBLE FOR HOTELS */}
         {formData.type === PlaceType.HOTEL && (
             <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4">
-                {/* BIP CONVENTION FIELD */}
                 <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
-                    <label className="block text-sm font-bold text-blue-800 mb-1">
-                        Convenzione Bip?
-                    </label>
+                    <label className="block text-sm font-bold text-blue-800 mb-1">Convenzione Bip?</label>
                     <select
                         value={formData.bipConvention === true ? 'true' : formData.bipConvention === false ? 'false' : ''}
                         onChange={(e) => {
@@ -363,38 +311,24 @@ const AddCard: React.FC = () => {
                                 bipConvention: val === 'true' ? true : val === 'false' ? false : undefined
                             });
                         }}
-                        className="w-full p-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-2 text-sm rounded-lg border border-gray-200 outline-none"
                     >
                         <option value="">Seleziona...</option>
-                        <option value="true">Sì, convenzione attiva</option>
+                        <option value="true">Sì</option>
                         <option value="false">No</option>
                     </select>
                 </div>
-
-                <div>
-                    <div className="flex items-center space-x-2 mb-3 text-blue-800">
-                        <ConciergeBell size={18} />
-                        <span className="font-semibold text-sm">Servizi Hotel</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {HOTEL_AMENITIES.map(amenity => {
-                            const isSelected = formData.services?.includes(amenity);
-                            return (
-                                <button
-                                    key={amenity}
-                                    type="button"
-                                    onClick={() => toggleService(amenity)}
-                                    className={`px-3 py-1.5 text-xs rounded-full border transition-all ${
-                                        isSelected 
-                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
-                                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
-                                    }`}
-                                >
-                                    {amenity}
-                                </button>
-                            );
-                        })}
-                    </div>
+                <div className="flex flex-wrap gap-2">
+                    {HOTEL_AMENITIES.map(amenity => (
+                        <button
+                            key={amenity}
+                            type="button"
+                            onClick={() => toggleService(amenity)}
+                            className={`px-3 py-1.5 text-xs rounded-full border ${formData.services?.includes(amenity) ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'}`}
+                        >
+                            {amenity}
+                        </button>
+                    ))}
                 </div>
             </div>
         )}
@@ -405,37 +339,18 @@ const AddCard: React.FC = () => {
             <input
                 type="text"
                 value={formData.address}
-                onChange={e => {
-                    // Reset coords if address changes to force update
-                    setFormData({...formData, address: e.target.value, lat: undefined, lng: undefined})
-                }}
-                onBlur={() => !formData.lat && formData.address && handleManualGeocode()}
-                className="flex-1 p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-                placeholder="Es. Via Roma 1, Milano"
+                onChange={e => setFormData({...formData, address: e.target.value, lat: undefined, lng: undefined})}
+                className="flex-1 p-3 rounded-lg border border-gray-200 outline-none"
+                placeholder="Via Roma 1, Milano"
             />
             <button 
                 type="button" 
                 onClick={() => handleManualGeocode()}
-                disabled={isGeocoding || !formData.address}
-                className={`p-3 rounded-lg border flex items-center justify-center transition-colors ${
-                    formData.lat 
-                    ? 'bg-emerald-100 border-emerald-200 text-emerald-600' 
-                    : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
-                }`}
-                title="Aggiorna posizione mappa"
+                className={`p-3 rounded-lg border ${formData.lat ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-50'}`}
             >
                 {isGeocoding ? <Loader2 size={20} className="animate-spin" /> : <MapPin size={20} />}
             </button>
           </div>
-          {formData.lat ? (
-              <p className="text-xs text-emerald-600 mt-1 flex items-center">
-                  <MapPin size={12} className="mr-1" /> Coordinate GPS attive
-              </p>
-          ) : (
-              <p className="text-xs text-gray-400 mt-1">
-                Inserisci <b>Via, Numero e Città</b> per trovare la posizione.
-              </p>
-          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -445,8 +360,7 @@ const AddCard: React.FC = () => {
                 type="tel"
                 value={formData.phone}
                 onChange={e => setFormData({...formData, phone: e.target.value})}
-                className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-                placeholder="02 1234567"
+                className="w-full p-3 rounded-lg border border-gray-200 outline-none"
             />
             </div>
             <div>
@@ -454,72 +368,42 @@ const AddCard: React.FC = () => {
             <select
                 value={formData.rating}
                 onChange={e => setFormData({...formData, rating: Number(e.target.value)})}
-                className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                className="w-full p-3 rounded-lg border border-gray-200 outline-none bg-white"
             >
-                <option value="0">Seleziona</option>
-                <option value="1">1 Stella</option>
-                <option value="2">2 Stelle</option>
-                <option value="3">3 Stelle</option>
-                <option value="4">4 Stelle</option>
-                <option value="5">5 Stelle</option>
+                {[0,1,2,3,4,5].map(v => <option key={v} value={v}>{v} Stelle</option>)}
             </select>
             </div>
         </div>
 
-        {/* Costo Medio */}
         <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1 transition-all">
-                {formData.type === PlaceType.OTHER ? 'Prezzo Biglietto/Ingresso (€)' : 'Costo Medio (€)'}
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Costo Medio (€)</label>
             <div className="relative">
                 <input
                     type="number"
                     value={formData.averageCost || ''}
                     onChange={e => setFormData({...formData, averageCost: Number(e.target.value)})}
-                    className="w-full p-3 pl-10 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="30"
+                    className="w-full p-3 pl-10 rounded-lg border border-gray-200 outline-none"
                 />
                 <Euro className="absolute left-3 top-3.5 text-gray-400" size={18} />
             </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tags (separati da virgola)</label>
-          <input
-            type="text"
-            value={formData.tags?.join(', ')}
-            onChange={e => setFormData({...formData, tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
-            className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-            placeholder="cucina romana, business, centro"
+          <label className="block text-sm font-medium text-gray-700 mb-1">Note Personali</label>
+          <textarea
+              value={formData.notes}
+              onChange={e => setFormData({...formData, notes: e.target.value})}
+              className="w-full p-3 rounded-lg border border-gray-200 outline-none h-24 resize-none"
           />
-        </div>
-
-        <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Note Personali</label>
-            <textarea
-                value={formData.notes}
-                onChange={e => setFormData({...formData, notes: e.target.value})}
-                className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none h-24 resize-none"
-                placeholder="Cosa hai mangiato? Come era il servizio?"
-            />
         </div>
 
         <button 
             type="submit" 
             disabled={isProcessing || isSaving}
-            className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-emerald-700 flex items-center justify-center space-x-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-70 flex items-center justify-center space-x-2"
         >
-            {isSaving ? (
-                <>
-                    <Loader2 size={20} className="animate-spin" />
-                    <span>Salvataggio...</span>
-                </>
-            ) : (
-                <>
-                    <Save size={20} />
-                    <span>{id ? 'Aggiorna Biglietto' : 'Salva Biglietto'}</span>
-                </>
-            )}
+            {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+            <span>{id ? 'Aggiorna Biglietto' : 'Salva Biglietto'}</span>
         </button>
       </form>
     </div>
