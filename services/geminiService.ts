@@ -25,16 +25,11 @@ export const analyzeBusinessCard = async (base64Data: string, mimeType: string =
   });
 
   try {
-    // STRUTTURA SEMPLIFICATA: Un singolo oggetto content con testo e immagine insieme
-    const result = await model.generateContent({
-      contents: [{
-        role: "user",
-        parts: [
-          { text: "Estrai dati dal biglietto da visita in JSON: name, address, phone, website, email." },
-          { inlineData: { mimeType, data: base64Data } }
-        ]
-      }]
-    });
+    // Passiamo i dati come richiesto dall'SDK: un array di parti
+    const result = await model.generateContent([
+      { inlineData: { data: base64Data, mimeType } },
+      { text: "Estrai i dati da questo biglietto da visita in JSON." }
+    ]);
 
     const response = await result.response;
     return JSON.parse(response.text());
@@ -49,11 +44,11 @@ export const askAiConcierge = async (query: string, cards: any[]) => {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
     const context = JSON.stringify(cards.map(c => ({ name: c.name, notes: c.notes || "" })));
-    const prompt = `Sei l'assistente di Gusto in Tasca. Locali: ${context}. Rispondi a: ${query}`;
+    const prompt = `Sei l'assistente di Gusto in Tasca. Dati: ${context}. Rispondi a: ${query}`;
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (error) {
-    return "L'assistente ha avuto un problema. Riprova.";
+    return "Errore di connessione.";
   }
 };
 
