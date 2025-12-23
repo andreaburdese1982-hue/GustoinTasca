@@ -1,0 +1,7 @@
+{
+  "name": "GustoinTasca",
+  "description": "Il tuo compagno di viaggio per raccogliere e organizzare biglietti da visita di hotel e ristoranti.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
