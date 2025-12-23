@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-// Force update for build resolution
+
 // 1. IMPORTANTE: In Vite si usa import.meta.env invece di process.env
 // Assicurati che su Vercel la variabile si chiami VITE_GEMINI_API_KEY
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -7,7 +7,7 @@ const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 /**
- * Converte un file in Base64 (utile se chiami questa funzione direttamente dal componente)
+ * Converte un file in Base64
  */
 export const fileToGenerativePart = async (file) => {
   return new Promise((resolve, reject) => {
@@ -30,9 +30,9 @@ export const analyzeBusinessCard = async (base64Image) => {
     throw new Error("Chiave API VITE_GEMINI_API_KEY non trovata. Controlla le impostazioni di Vercel.");
   }
 
-  // Usiamo gemini-1.5-flash: è il più veloce e preciso per leggere immagini (OCR)
+  // Aggiornato a gemini-1.5-flash-latest per risolvere l'errore 404
   const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
+    model: "gemini-1.5-flash-latest", 
     generationConfig: {
       responseMimeType: "application/json",
     }
@@ -81,7 +81,8 @@ export const analyzeBusinessCard = async (base64Image) => {
 export const askAiConcierge = async (query, cards) => {
   if (!API_KEY) return "Configurazione IA incompleta.";
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  // Aggiornato a gemini-1.5-flash-latest per risolvere l'errore 404
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
   const contextData = cards.map(c => ({
     name: c.name,
