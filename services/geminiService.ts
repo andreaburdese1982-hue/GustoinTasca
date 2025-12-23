@@ -1,19 +1,13 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// 1. IMPORTANTE: In Vite si usa import.meta.env invece di process.env
-// Assicurati che su Vercel la variabile si chiami VITE_GEMINI_API_KEY
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-/**
- * Converte un file in Base64
- */
 export const fileToGenerativePart = async (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64String = reader.result;
+      const base64String = reader.result as string;
       const base64Data = base64String.split(',')[1];
       resolve(base64Data);
     };
@@ -22,87 +16,45 @@ export const fileToGenerativePart = async (file) => {
   });
 };
 
-/**
- * Analizza il biglietto da visita
- */
 export const analyzeBusinessCard = async (base64Image) => {
-  if (!API_KEY) {
-    throw new Error("Chiave API VITE_GEMINI_API_KEY non trovata. Controlla le impostazioni di Vercel.");
-  }
+  if (!API_KEY) throw new Error("API Key mancante");
 
-  // Aggiornato a gemini-1.5-flash-latest per risolvere l'errore 404
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash-latest", 
-    generationConfig: {
-      responseMimeType: "application/json",
-    }
-  });
+  // Versione ultra-semplificata per evitare errori 404
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
   const prompt = `
-    Analizza questa immagine di un biglietto da visita. 
-    Estrai i dati in formato JSON seguendo questo schema:
-    {
-      "name": "Nome del locale o persona",
-      "type": "Ristorante" | "Hotel" | "Esperienze",
-      "address": "Indirizzo completo",
-      "phone": "Numero di telefono",
-      "website": "Sito web",
-      "email": "Email",
-      "suggestedTags": ["tag1", "tag2", "tag3"],
-      "lat": numero,
-      "lng": numero
-    }
-    Se non trovi un valore, usa una stringa vuota o null per i numeri.
+    Analizza questa immagine di un biglietto da visita e restituisci SOLO un oggetto JSON con:
+    name, type (Ristorante, Hotel o Esperienze), address, phone, website, email, suggestedTags (array), lat, lng.
   `;
 
   try {
     const result = await model.generateContent([
       prompt,
-      {
-        inlineData: {
-          mimeType: "image/jpeg",
-          data: base64Image
-        }
-      }
+      { inlineData: { mimeType: "image/jpeg", data: base64Image } }
     ]);
-
-    const response = await result.response;
-    const text = response.text();
-    return JSON.parse(text);
+    const text = result.response.text();
+    // Pulizia del testo da eventuali blocchi markdown ```json
+    const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanText);
   } catch (error) {
-    console.error("Errore durante l'analisi del biglietto:", error);
+    console.error("Errore analisi:", error);
     throw error;
   }
 };
 
-/**
- * Concierge IA per chattare con i dati dei luoghi
- */
 export const askAiConcierge = async (query, cards) => {
   if (!API_KEY) return "Configurazione IA incompleta.";
 
-  // Aggiornato a gemini-1.5-flash-latest per risolvere l'errore 404
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const context = JSON.stringify(cards.map(c => ({ name: c.name, type: c.type, notes: c.notes })));
 
-  const contextData = cards.map(c => ({
-    name: c.name,
-    type: c.type,
-    tags: c.tags?.join(', '),
-    notes: c.notes
-  }));
-
-  const prompt = `
-    Sei il Concierge di "Gusto in Tasca". 
-    Dati dell'utente: ${JSON.stringify(contextData)}.
-    Rispondi in modo amichevole a: ${query}
-  `;
+  const prompt = `Sei il Concierge di "Gusto in Tasca". Dati: ${context}. Rispondi a: ${query}`;
 
   try {
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
+    return result.response.text();
   } catch (error) {
-    console.error("Concierge Error:", error);
-    return "Ops! Non riesco a rispondere in questo momento.";
+    console.error("Errore Concierge:", error);
+    return "Ops! Non riesco a rispondere ora.";
   }
 };
