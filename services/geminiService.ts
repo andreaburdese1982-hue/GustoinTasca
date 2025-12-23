@@ -1,31 +1,27 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-// FORZIAMO L'USO DI V1 PER EVITARE L'ERRORE 404 V1BETA
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 export const askAiConcierge = async (query, cards) => {
   if (!API_KEY) return "Configurazione incompleta.";
 
   try {
-    // Forza la versione v1 esplicitamente
-    const model = genAI.getGenerativeModel(
-      { model: "gemini-1.5-flash" },
-      { apiVersion: "v1" } // <-- QUESTA È LA CHIAVE PER RISOLVERE IL 404
-    );
+    // CAMBIO MODELLO: Usiamo gemini-pro per la massima stabilità
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
     const context = JSON.stringify(cards.map(c => ({ name: c.name, notes: c.notes })));
-    const prompt = `Sei l'assistente di Gusto in Tasca. Rispondi a: ${query} basandoti su: ${context}`;
+    const prompt = `Sei l'assistente di Gusto in Tasca. Rispondi a: ${query} basandoti su questi dati: ${context}`;
 
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (error) {
-    console.error("Errore critico:", error);
-    return "L'IA è quasi pronta. Riprova tra 10 secondi.";
+    console.error("Errore IA:", error);
+    return "L'assistente sta arrivando, riprova tra un istante.";
   }
 };
 
+// Funzioni di supporto per le immagini (mantengono lo stesso schema)
 export const fileToGenerativePart = async (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -36,18 +32,11 @@ export const fileToGenerativePart = async (file) => {
 };
 
 export const analyzeBusinessCard = async (base64Image) => {
+  // Anche qui usiamo gemini-pro (o gemini-1.0-pro-vision se disponibile)
+  const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+  const prompt = "Estrai dati JSON: name, address, phone.";
   try {
-    const model = genAI.getGenerativeModel(
-      { model: "gemini-1.5-flash" },
-      { apiVersion: "v1" }
-    );
-    const prompt = "Estrai JSON: name, address, phone.";
-    const result = await model.generateContent([
-      prompt, 
-      { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-    ]);
+    const result = await model.generateContent([prompt, { inlineData: { mimeType: "image/jpeg", data: base64Image } }]);
     return JSON.parse(result.response.text().replace(/```json|```/g, ""));
-  } catch (e) {
-    throw e;
-  }
+  } catch (e) { throw e; }
 };
