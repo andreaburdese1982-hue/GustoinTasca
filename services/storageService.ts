@@ -234,7 +234,7 @@ const SupabaseService = {
  resetPassword: async (email: string): Promise<void> => {
       if (!supabase) return;
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          // Forza l'URL autorizzato su Supabase
+          // Questo URL deve essere identico a quello autorizzato su Supabase
           redirectTo: 'https://gusto-in-tasca.vercel.app/#/profile'
       });
       if (error) throw error;
