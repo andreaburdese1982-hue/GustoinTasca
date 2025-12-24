@@ -32,13 +32,21 @@ const CURRENT_USER_KEY = 'gustointasca_current_user';
 // Initialize Supabase if keys are present
 let supabase: SupabaseClient | null = null;
 
+// MODIFICA QUESTA PARTE (Riga ~36)
 if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith('http')) {
     try {
-        supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+            auth: {
+                detectSessionInUrl: true, // Fondamentale per il reset password!
+                persistSession: true,
+                autoRefreshToken: true
+            }
+        });
         console.log("GustoinTasca: Connected to Supabase Engine");
     } catch (e) {
         console.error("GustoinTasca: Failed to initialize Supabase", e);
     }
+}
 } else {
     console.warn("GustoinTasca: Keys missing. Running in Demo Mode (LocalStorage).");
 }
@@ -224,12 +232,13 @@ const SupabaseService = {
   },
   
   resetPassword: async (email: string): Promise<void> => {
-      if (!supabase) return;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.href 
-      });
-      if (error) throw error;
-  },
+    if (!supabase) return;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        // Sostituiamo window.location.href con l'indirizzo esatto del profilo
+        redirectTo: 'https://gusto-in-tasca.vercel.app/#/profile'
+    });
+    if (error) throw error;
+},
 
   updatePassword: async (password: string): Promise<void> => {
       if (!supabase) return;
