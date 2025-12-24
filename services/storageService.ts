@@ -32,7 +32,6 @@ const CURRENT_USER_KEY = 'gustointasca_current_user';
 // Initialize Supabase if keys are present
 let supabase: SupabaseClient | null = null;
 
-// Sostituisci il blocco dell'inizializzazione con questo:
 if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith('http')) {
     try {
         supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -230,13 +229,13 @@ const SupabaseService = {
     await supabase.auth.signOut();
   },
   
-  resetPassword: async (email: string): Promise<void> => {
-    if (!supabase) return;
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        // Sostituiamo window.location.href con l'indirizzo esatto del profilo
-        redirectTo: 'https://gusto-in-tasca.vercel.app/#/profile'
-    });
-    if (error) throw error;
+ resetPassword: async (email: string): Promise<void> => {
+      if (!supabase) return;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          // Forza l'URL autorizzato su Supabase
+          redirectTo: 'https://gusto-in-tasca.vercel.app/#/profile'
+      });
+      if (error) throw error;
 },
 
   updatePassword: async (password: string): Promise<void> => {
