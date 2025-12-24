@@ -32,6 +32,7 @@ const CURRENT_USER_KEY = 'gustointasca_current_user';
 // Initialize Supabase if keys are present
 let supabase: SupabaseClient | null = null;
 
+// --- INIZIO BLOCCO DA SOSTITUIRE ---
 if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith('http')) {
     try {
         supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -48,6 +49,7 @@ if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith('http')) {
 } else {
     console.warn("GustoinTasca: Keys missing. Running in Demo Mode (LocalStorage).");
 }
+// --- FINE BLOCCO DA SOSTITUIRE ---
 
 // Helper to simulate network delay for Mock Mode
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
