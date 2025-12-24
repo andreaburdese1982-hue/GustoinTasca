@@ -32,12 +32,12 @@ const CURRENT_USER_KEY = 'gustointasca_current_user';
 // Initialize Supabase if keys are present
 let supabase: SupabaseClient | null = null;
 
-// MODIFICA QUESTA PARTE (Riga ~36)
+// Sostituisci il blocco dell'inizializzazione con questo:
 if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith('http')) {
     try {
         supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
             auth: {
-                detectSessionInUrl: true, // Fondamentale per il reset password!
+                detectSessionInUrl: true,
                 persistSession: true,
                 autoRefreshToken: true
             }
@@ -46,7 +46,6 @@ if (SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith('http')) {
     } catch (e) {
         console.error("GustoinTasca: Failed to initialize Supabase", e);
     }
-}
 } else {
     console.warn("GustoinTasca: Keys missing. Running in Demo Mode (LocalStorage).");
 }
