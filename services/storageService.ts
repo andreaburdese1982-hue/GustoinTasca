@@ -235,7 +235,7 @@ const SupabaseService = {
       if (!supabase) return;
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
           // Questo URL deve essere identico a quello autorizzato su Supabase
-          redirectTo: 'https://gusto-in-tasca.vercel.app/#/profile'
+          redirectTo: 'https://gusto-in-tasca.vercel.app/'
       });
       if (error) throw error;
 },
